@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * 飞书每日资讯推送
- * 抓取 3 个领域 RSS → 整理 → 发送飞书消息
+ * 抓取 3 个领域 RSS → 翻译成中文 → 发送飞书消息
  */
 
 const https = require('https')
@@ -42,13 +42,41 @@ const RSS_SOURCES = [
 function fetchUrl(url) {
   return new Promise((resolve) => {
     const mod = url.startsWith('https') ? https : http
-    const req = mod.get(url, { timeout: 8000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)' } }, (res) => {
+    const req = mod.get(url, { timeout: 10000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)' } }, (res) => {
+      // 处理重定向
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        fetchUrl(res.headers.location).then(resolve)
+        return
+      }
       let data = ''
       res.on('data', chunk => { data += chunk })
       res.on('end', () => resolve(data))
     })
     req.on('error', () => resolve(''))
     req.on('timeout', () => { req.destroy(); resolve('') })
+  })
+}
+
+// 使用 MyMemory 免费翻译 API（无需 key，每天 5000 字符）
+function translate(text) {
+  if (!text) return Promise.resolve('')
+  const encoded = encodeURIComponent(text.slice(0, 200))
+  const url = `https://api.mymemory.translated.net/get?q=${encoded}&langpair=en|zh`
+  return new Promise((resolve) => {
+    https.get(url, { timeout: 6000 }, (res) => {
+      let data = ''
+      res.on('data', chunk => { data += chunk })
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data)
+          const result = json?.responseData?.translatedText
+          // 如果翻译失败或返回原文，直接用原文
+          resolve(result && result !== text ? result : text)
+        } catch {
+          resolve(text)
+        }
+      })
+    }).on('error', () => resolve(text)).on('timeout', () => resolve(text))
   })
 }
 
@@ -67,7 +95,7 @@ function parseRSS(xml, maxItems = 3) {
                     ?.replace(/<[^>]+>/g, '')
                     ?.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
                     ?.trim()
-                    ?.slice(0, 80)
+                    ?.slice(0, 100)
     if (title && link) items.push({ title, link, desc })
   }
   return items
@@ -87,6 +115,20 @@ async function fetchCategory(category, feeds) {
   return { category, items: results.slice(0, 3) }
 }
 
+async function translateSection(section) {
+  const translatedItems = []
+  for (const item of section.items) {
+    const [titleZh, descZh] = await Promise.all([
+      translate(item.title),
+      item.desc ? translate(item.desc) : Promise.resolve(''),
+    ])
+    translatedItems.push({ ...item, title: titleZh, desc: descZh })
+    // 稍微错开请求，避免触发频率限制
+    await new Promise(r => setTimeout(r, 300))
+  }
+  return { ...section, items: translatedItems }
+}
+
 // ── 构建飞书消息 ──────────────────────────────────────────
 
 function buildFeishuPost(sections) {
@@ -95,28 +137,23 @@ function buildFeishuPost(sections) {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
   })
 
-  // 飞书富文本 post 格式
   const content = []
 
-  // 标题行
   content.push([{ tag: 'text', text: `📰  每日资讯  ·  ${today}`, un_escape: true }])
   content.push([{ tag: 'text', text: '─────────────────────', un_escape: true }])
 
   for (const { category, items } of sections) {
     if (items.length === 0) continue
 
-    // 分类标题
     content.push([{ tag: 'text', text: '' }])
     content.push([{ tag: 'text', text: category, un_escape: true }])
 
     for (const item of items) {
-      // 标题 + 链接
       content.push([
         { tag: 'a', text: `• ${item.title}`, href: item.link },
       ])
-      // 摘要（如有）
       if (item.desc) {
-        content.push([{ tag: 'text', text: `  ${item.desc}…`, un_escape: true }])
+        content.push([{ tag: 'text', text: `  ${item.desc}`, un_escape: true }])
       }
     }
   }
@@ -183,7 +220,14 @@ async function main() {
 
   sections.forEach(s => console.log(`${s.category}: ${s.items.length} 条`))
 
-  const payload = buildFeishuPost(sections)
+  console.log('翻译中...')
+  const translated = []
+  for (const section of sections) {
+    const t = await translateSection(section)
+    translated.push(t)
+  }
+
+  const payload = buildFeishuPost(translated)
   await sendToFeishu(payload)
   console.log('✅ 推送完成')
 }

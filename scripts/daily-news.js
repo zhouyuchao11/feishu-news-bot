@@ -14,22 +14,25 @@ const RSS_SOURCES = [
   {
     category: '🚗 汽车行业动态',
     feeds: [
-      'https://www.autohome.com.cn/rss/news.xml',
-      'https://www.pcauto.com.cn/rss/news.xml',
+      'https://electrek.co/feed/',
+      'https://insideevs.com/feed/',
+      'https://www.theverge.com/cars/rss/index.xml',
     ],
   },
   {
     category: '🎨 品牌形象设计',
     feeds: [
-      'https://www.uisdc.com/feed',
-      'https://www.zcool.com.cn/feed',
+      'https://www.dezeen.com/feed/',
+      'https://www.underconsideration.com/brandnew/feed/',
+      'https://www.creativebloq.com/feed',
     ],
   },
   {
     category: '🤖 AI 动态',
     feeds: [
-      'https://www.jiqizhixin.com/rss',
-      'https://feeds.feedburner.com/aitechtrend',
+      'https://techcrunch.com/category/artificial-intelligence/feed/',
+      'https://www.theverge.com/ai-artificial-intelligence/rss/index.xml',
+      'https://venturebeat.com/category/ai/feed/',
     ],
   },
 ]

@@ -99,7 +99,7 @@ function parseRSS(xml, maxItems = 3) {
                     ?.replace(/<[^>]+>/g, '')
                     ?.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
                     ?.trim()
-                    ?.slice(0, 100)
+                    ?.slice(0, 150)
     if (title && link) items.push({ title, link, desc })
   }
   return items
@@ -125,15 +125,17 @@ async function translateSection(section) {
   const translatedItems = []
   for (const item of section.items) {
     if (item.lang === 'zh') {
-      // 中文直接用，不翻译
-      translatedItems.push(item)
+      // 中文：用 desc 作为概括，没有 desc 就用 title
+      const summary = item.desc || item.title
+      translatedItems.push({ ...item, summary })
       continue
     }
-    const [titleZh, descZh] = await Promise.all([
-      translate(item.title),
-      item.desc ? translate(item.desc) : Promise.resolve(''),
-    ])
-    translatedItems.push({ ...item, title: titleZh, desc: descZh })
+    // 英文：把 title + desc 合并翻译成一句概括
+    const combined = item.desc
+      ? `${item.title}. ${item.desc}`
+      : item.title
+    const summary = await translate(combined)
+    translatedItems.push({ ...item, summary })
     await new Promise(r => setTimeout(r, 300))
   }
   return { ...section, items: translatedItems }
@@ -159,12 +161,11 @@ function buildFeishuPost(sections) {
     content.push([{ tag: 'text', text: category, un_escape: true }])
 
     for (const item of items) {
-      content.push([
-        { tag: 'a', text: `• ${item.title}`, href: item.link },
-      ])
-      if (item.desc) {
-        content.push([{ tag: 'text', text: `  ${item.desc}`, un_escape: true }])
-      }
+      // 一句概括
+      content.push([{ tag: 'text', text: `• ${item.summary || item.title}`, un_escape: true }])
+      // 查看原文链接
+      content.push([{ tag: 'a', text: '  🔗 查看原文', href: item.link }])
+      content.push([{ tag: 'text', text: '' }])
     }
   }
 

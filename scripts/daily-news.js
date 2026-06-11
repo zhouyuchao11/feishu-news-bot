@@ -87,9 +87,10 @@ function translate(text) {
 function stripHtml(str) {
   if (!str) return ''
   return str
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')  // 解包 CDATA
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')    // 先解码实体
+    .replace(/&amp;/g, '&')
+    .replace(/<[^>]+>/g, '')                        // 再去掉 HTML 标签
     .replace(/&nbsp;/g, ' ').replace(/&bull;/g, '·').replace(/&#\d+;/g, '')
     .replace(/&[a-z]+;/g, '')
     .trim()
@@ -101,18 +102,21 @@ function parseRSS(xml, maxItems = 10) {
   for (const match of itemMatches) {
     if (items.length >= maxItems) break
     const block = match[0]
+
     const title = stripHtml(
       (block.match(/<title[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/title>/) ||
        block.match(/<title[^>]*>([\s\S]*?)<\/title>/))?.[1]
     )
-    const link = (
-      block.match(/<link[^>]*>([\s\S]*?)<\/link>/) ||
-      block.match(/<link[^>]*href="([^"]+)"/)
-    )?.[1]?.trim()
-    const desc = stripHtml(
-      (block.match(/<description[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/description>/) ||
-       block.match(/<description[^>]*>([\s\S]*?)<\/description>/))?.[1]
-    )?.slice(0, 150)
+
+    // Google News 的真实文章链接藏在 description 的 <a href=""> 里
+    const descRaw = (block.match(/<description[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/description>/) ||
+                     block.match(/<description[^>]*>([\s\S]*?)<\/description>/))?.[1] || ''
+    const descDecoded = descRaw.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    const articleLink = descDecoded.match(/href="([^"]+)"/)?.[1]
+    const fallbackLink = block.match(/<link[^>]*>([\s\S]*?)<\/link>/)?.[1]?.trim()
+    const link = articleLink || fallbackLink
+
+    const desc = stripHtml(descRaw)?.replace(/^.*?·\s*/, '')?.slice(0, 150) || ''
 
     if (title && link) items.push({ title, link, desc })
   }

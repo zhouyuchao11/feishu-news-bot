@@ -10,29 +10,33 @@ const http = require('http')
 const WEBHOOK_URL = process.env.FEISHU_WEBHOOK
 
 // ── RSS 源配置 ────────────────────────────────────────────
+// lang: 'zh' 表示已是中文，跳过翻译；'en' 表示需要翻译
 const RSS_SOURCES = [
   {
     category: '🚗 汽车行业动态',
     feeds: [
-      'https://electrek.co/feed/',
-      'https://insideevs.com/feed/',
-      'https://www.theverge.com/cars/rss/index.xml',
+      // Google News 中文搜索（国内外新能源资讯）
+      { url: 'https://news.google.com/rss/search?q=%E6%96%B0%E8%83%BD%E6%BA%90%E6%B1%BD%E8%BD%A6&hl=zh-CN&gl=CN&ceid=CN:zh-Hans', lang: 'zh' },
+      { url: 'https://news.google.com/rss/search?q=%E6%AF%94%E4%BA%9A%E8%BF%AA+OR+%E7%90%86%E6%83%B3+OR+%E8%94%9A%E6%9D%A5+OR+%E5%B0%8F%E9%B9%8F&hl=zh-CN&gl=CN&ceid=CN:zh-Hans', lang: 'zh' },
+      // 国际新能源媒体
+      { url: 'https://electrek.co/feed/', lang: 'en' },
+      { url: 'https://insideevs.com/feed/', lang: 'en' },
     ],
   },
   {
     category: '🎨 品牌形象设计',
     feeds: [
-      'https://www.dezeen.com/feed/',
-      'https://www.underconsideration.com/brandnew/feed/',
-      'https://www.creativebloq.com/feed',
+      { url: 'https://news.google.com/rss/search?q=%E5%93%81%E7%89%8C%E8%AE%BE%E8%AE%A1+OR+VI%E8%AE%BE%E8%AE%A1&hl=zh-CN&gl=CN&ceid=CN:zh-Hans', lang: 'zh' },
+      { url: 'https://www.dezeen.com/feed/', lang: 'en' },
+      { url: 'https://www.underconsideration.com/brandnew/feed/', lang: 'en' },
     ],
   },
   {
     category: '🤖 AI 动态',
     feeds: [
-      'https://techcrunch.com/category/artificial-intelligence/feed/',
-      'https://www.theverge.com/ai-artificial-intelligence/rss/index.xml',
-      'https://venturebeat.com/category/ai/feed/',
+      { url: 'https://news.google.com/rss/search?q=%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD+OR+%E5%A4%A7%E6%A8%A1%E5%9E%8B&hl=zh-CN&gl=CN&ceid=CN:zh-Hans', lang: 'zh' },
+      { url: 'https://techcrunch.com/category/artificial-intelligence/feed/', lang: 'en' },
+      { url: 'https://www.theverge.com/ai-artificial-intelligence/rss/index.xml', lang: 'en' },
     ],
   },
 ]
@@ -103,11 +107,13 @@ function parseRSS(xml, maxItems = 3) {
 
 async function fetchCategory(category, feeds) {
   const results = []
-  for (const url of feeds) {
+  for (const feed of feeds) {
     try {
+      const url = typeof feed === 'string' ? feed : feed.url
+      const lang = typeof feed === 'string' ? 'en' : feed.lang
       const xml = await fetchUrl(url)
       if (!xml) continue
-      const items = parseRSS(xml, 3)
+      const items = parseRSS(xml, 3).map(item => ({ ...item, lang }))
       results.push(...items)
       if (results.length >= 3) break
     } catch (_) {}
@@ -118,12 +124,16 @@ async function fetchCategory(category, feeds) {
 async function translateSection(section) {
   const translatedItems = []
   for (const item of section.items) {
+    if (item.lang === 'zh') {
+      // 中文直接用，不翻译
+      translatedItems.push(item)
+      continue
+    }
     const [titleZh, descZh] = await Promise.all([
       translate(item.title),
       item.desc ? translate(item.desc) : Promise.resolve(''),
     ])
     translatedItems.push({ ...item, title: titleZh, desc: descZh })
-    // 稍微错开请求，避免触发频率限制
     await new Promise(r => setTimeout(r, 300))
   }
   return { ...section, items: translatedItems }

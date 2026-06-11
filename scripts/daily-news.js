@@ -84,22 +84,36 @@ function translate(text) {
   })
 }
 
-function parseRSS(xml, maxItems = 3) {
+function stripHtml(str) {
+  if (!str) return ''
+  return str
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ').replace(/&bull;/g, '·').replace(/&#\d+;/g, '')
+    .replace(/&[a-z]+;/g, '')
+    .trim()
+}
+
+function parseRSS(xml, maxItems = 10) {
   const items = []
   const itemMatches = xml.matchAll(/<item[\s\S]*?<\/item>/gi)
   for (const match of itemMatches) {
     if (items.length >= maxItems) break
     const block = match[0]
-    const title = (block.match(/<title[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/title>/) ||
-                   block.match(/<title[^>]*>([\s\S]*?)<\/title>/))?.[1]?.trim()
-    const link  = (block.match(/<link[^>]*>([\s\S]*?)<\/link>/) ||
-                   block.match(/<link[^>]*href="([^"]+)"/))?.[1]?.trim()
-    const desc  = (block.match(/<description[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/description>/) ||
-                   block.match(/<description[^>]*>([\s\S]*?)<\/description>/))?.[1]
-                    ?.replace(/<[^>]+>/g, '')
-                    ?.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
-                    ?.trim()
-                    ?.slice(0, 150)
+    const title = stripHtml(
+      (block.match(/<title[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/title>/) ||
+       block.match(/<title[^>]*>([\s\S]*?)<\/title>/))?.[1]
+    )
+    const link = (
+      block.match(/<link[^>]*>([\s\S]*?)<\/link>/) ||
+      block.match(/<link[^>]*href="([^"]+)"/)
+    )?.[1]?.trim()
+    const desc = stripHtml(
+      (block.match(/<description[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/description>/) ||
+       block.match(/<description[^>]*>([\s\S]*?)<\/description>/))?.[1]
+    )?.slice(0, 150)
+
     if (title && link) items.push({ title, link, desc })
   }
   return items

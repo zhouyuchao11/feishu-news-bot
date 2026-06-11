@@ -113,12 +113,12 @@ async function fetchCategory(category, feeds) {
       const lang = typeof feed === 'string' ? 'en' : feed.lang
       const xml = await fetchUrl(url)
       if (!xml) continue
-      const items = parseRSS(xml, 3).map(item => ({ ...item, lang }))
+      const items = parseRSS(xml, 10).map(item => ({ ...item, lang }))
       results.push(...items)
-      if (results.length >= 3) break
+      if (results.length >= 10) break
     } catch (_) {}
   }
-  return { category, items: results.slice(0, 3) }
+  return { category, items: results.slice(0, 10) }
 }
 
 async function translateSection(section) {
